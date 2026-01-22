@@ -50,7 +50,7 @@ Courses List:
 
 
 
-- MAT 2125B Elementary Real Analysis
+## 5. MAT 2125B Elementary Real Analysis
 
   - Aaron Tikuisis, aaron.tikuisis@uottawa.ca
 
@@ -59,7 +59,7 @@ Courses List:
     - 4 Quizzes(10%)
     - Midterm(35%)
     - Final(55%)
-  
+
 
 
 
