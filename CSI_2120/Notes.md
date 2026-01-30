@@ -1,6 +1,0 @@
-```go
-package main
-
-
-```
-

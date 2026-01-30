@@ -37,7 +37,7 @@ There are no final of this course, only have 2 tests online.
 
 ## 4. CSI 2101A Discrete Structures
 
-*xxr
+*xxr 到此一游Oo
 
 - Grades by:
   - Quizzes 30%
