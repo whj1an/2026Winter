@@ -98,24 +98,123 @@ func main(){
 }
 ```
 
+---
+
 ## Labs
-Just subbmitted one of three labs.
+
+Submit one of three labs.
 
 ### Lab1
 
-**Question 1**: Write a Go function that takes a parameter of type `float32` and returns two integer values. The **first integer** must be the floor value of the real number, and the **second integer** must be the ceciling value of that real number. Demonstrate that the function works correctly by calling it from a `main` function.
+#### Question 1
+
+Write a Go function that takes a parameter of type `float32` and returns two integer values. The **first integer** must be the floor value of the real number, and the **second integer** must be the ceciling value of that real number. Demonstrate that the function works correctly by calling it from a `main` function.
 
 > 编写一个Go函数，接受float32类型的参数并返回两个整数值。**第一个整数**必须是实数的下限值，**第二个整数**必须是该实数的下限值。通过从“main”函数调用该函数来演示该函数的正确工作。
+
+Solution:
+
+```go
+package main
+
+import (
+    "math"
+)
+
+func floorCeil32(x float32) ( int, int ) {
+    xf := float64(x)
+
+    floorVal := math.Floor(xf)
+    ceilVal := math.Ceil(xf)
+
+    return int(floorVal), int(ceilVal)
+}
+```
+
+#### Question 2
+
+ Write a function that removes all negative numbers from a slice of integers. The function must return a new slice containing only the *positive numbers*. Ensure that the returned slice has the same capacity as the original slice. Demonstrate that the function works correctly by calling it from a `main`function
+> 编写一个函数，用于从整数切片中移除所有负数。该函数必须返回一个新的切片，其中仅包含*正数*。确保返回的切片与原始切片具有相同的容量。通过在 `main` 函数中调用该函数来证明该函数运行正常。
+
+Solution:
+
+```go
+package main
+// Haojian Wang
+func keepPositives ( nums []int ) []int {
+    result := make([]int, 0, cap(nums))
+
+    for _, v := range nums {
+        if v > 0 {
+            result = append(result, v)
+        }
+    }
+    return result
+}
+```
+
+#### Question 3
+
+Below is a binary tree containing instances of type `Point`, inserted in an arbitrary order (this is not a binary search tree).
+I. Write a method that prints the contents of this tree using a post-order traversal.
+II.Write a method `find(x, y)` that determins whether a given point is present anywhere in the tree.
+III. Create an interface `PointSearcher` that specifies the `find` method.
+IV. Test your methods using the `main` function on the next page, and ensure that your program produces the expected output shown.
+
+> 给你一个不是 BST（插入顺序任意）的二叉树，节点里存 Point{x,y}。
+> 你要实现四件事：
+> I. postorder()：用后序遍历打印整棵树内容（Left → Right → Root）。  ￼
+> II. find(x,y)：在整棵树里查找是否存在该点（因为不是 BST，必须可能遍历左右子树）。
+> III. 定义接口 PointSearcher：只规定 find(x,y) 方法。
+> IV. 用题目给的 main 测试，并输出与示例一致。
+
+Solution:
 
 ```go
 package main
 
 import "fmt"
 
-func main() {
+type Point struct {
+    x int
+    y int
+}
 
+type PtTree struct {
+    pt Point
+    left, right *PtTree
+}
+
+func (t *PtTree) postorder() {
+    if t == nil {
+        return
+    }
+
+    t.left.postorder()
+
+    t.right.postorder()
+
+    fmt. Printf("(%d,%d) ", t.pt.x, t.pt.y)
+}
+
+func (t *PtTree) find(x, y int) bool{
+    if t == nil {
+        return false
+    }
+
+    if t.pt.x == x && t.pt.y == y{
+        return true
+    }
+
+    return t.left.find(x, y) || t.right.find(x, y)
+}
+
+type PointSearcher interface{
+    find(x, y int) bool
 }
 ```
+
+---
 
 ## Project
 
@@ -183,14 +282,14 @@ init函数和main函数
 ```go
     append          -- 用来追加元素到数组、slice中,返回修改后的数组、slice
     close           -- 主要用来关闭channel
-    delete            -- 从map中删除key对应的value
-    panic            -- 停止常规的goroutine  （panic和recover：用来做错误处理）
+    delete          -- 从map中删除key对应的value
+    panic           -- 停止常规的goroutine  （panic和recover：用来做错误处理）
     recover         -- 允许程序定义goroutine的panic动作
     imag            -- 返回complex的实部   （complex、real imag：用于创建和操作复数）
     real            -- 返回complex的虚部
     make            -- 用来分配内存，返回Type本身(只能应用于slice, map, channel)
     new                -- 用来分配内存，主要用来分配值类型，比如int、struct。返回指向Type的指针
-    cap                -- capacity是容量的意思，用于返回某个类型的最大容量（只能用于切片和 
+    cap             -- capacity是容量的意思，用于返回某个类型的最大容量（只能用于切片和 
     copy            -- 用于复制和连接slice，返回复制的数目
     len                -- 来求长度，比如string、array、slice、map、channel ，返回长度
     print、println     -- 底层打印函数，在部署环境中建议使用 fmt 包
