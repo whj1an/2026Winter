@@ -1,3 +1,15 @@
+---
+title: "CSI2120 Notes"
+author: "Jace Wang"
+date: "2026-01-12"
+
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
 # CSI 2120A Notes, 2026Winter
 
 Course code: CSI 2120 A00
@@ -83,7 +95,7 @@ func parallelSquareSum(numbers []int) int {
 
             mu.lock()
 
-            sun += sq
+            sum += sq
 
             mu.Unlock()
         } (n)
@@ -97,6 +109,493 @@ func main(){
     fmt.Println("Total:", parallelSquareSum(nums))
 }
 ```
+
+#### Question 2
+
+a) This code is a module that repeatedly ccalls a function. It stops when a message is sent to the `stop` channel. We want to add another stopping condition: the module should also terminate is its output channle is not read for a period of 2 seconds. *Hint: this can be done using `time.After` function*
+
+> a) 此代码是一个模块，它会反复调用一个函数。当向停止通道发送消息时，该模块会停止运行。我们还想添加另一个停止条件：该模块还应在其输出通道未在 2 秒内被读取时终止运行。提示：这可以通过使用 `time.After` 函数来实现。
+
+Code:
+
+```go
+func repearFct (wg *sync.WaitGroup, stop <- chan bool, fct func() int) <-chan int {
+  intStram := make(chan int)
+  
+  go func() {
+    defer func() {wg.Done()}()
+    defer close(intStream)
+    
+    for {
+      select {
+      	case <-stop:
+        	fmt.Printf("\nFin de repeat (%d)... \n", count)
+        	return
+        case intStream <- fct():
+      }
+    }
+  }()
+  return intStream
+}
+```
+
+==Solution==: 最直接的办法就是在select方法中加入一个`tmie.After(2*time.Second)`，也就是只要两秒钟内一致发送无法成功，timeout就会触发并推出`goroutine`
+
+```go
+package main
+
+import (
+  "fmt"
+  "sync"
+  "time"
+)
+
+func repeatFct(wg *sync.WaitGroup, stop <-chan bool, fct func() int) <-chan int {
+  intStream := make(chan int)
+
+  wg.Add(1)
+  go func() {
+    // 确保 goroutine 退出时：1) WaitGroup 计数减 1，2) 关闭输出通道
+    defer wg.Done()
+    defer close(intStream)
+
+    for {
+      select {
+        case <-stop:
+        // 收到 stop 信号，立即退出
+        fmt.Println("repeatFct: stopped by stop signal")
+        return
+
+        // 只有当“有人正在读取 intStream”时，这个发送分支才会被选中
+        case intStream <- fct():
+        // 成功发送一个值后继续循环
+        // （这里不需要做额外处理）
+
+        case <-time.After(2 * time.Second):
+        // 2 秒内一直无法发送（通常意味着没人读 intStream），就退出
+        fmt.Println("repeatFct: stopped because output not read for 2s")
+        return
+      }
+    }
+  }()
+
+  return intStream
+}
+```
+
+b) With the moudle in a), create a pipeline made of three concurrent stages that will generatee random *Harshad numbers*. A fan-out of three *Harshad filters* is applied at the last stage. Instead of sending the *Harshad numbers* to an output channel, the three filters insert the found numbers to a common queue data structure passed to each filter (see the signature below). Use this pipeline to generate 200 random numbers; only the Harshad numbers are inserted into the queue. Once the pipeline terminates, the content of the queue is displayed by the `main` function/
+
+```go
+func filter(wg *sync.WaitGroup, stop <- chan bool,
+           inputIntstream <- chan int,
+            filter func(int) bool,
+           outputQueue *Queue)
+```
+
+![image-20260219122850243](./assets/CSI2120_Notes/image-20260219122850243.png)
+
+==Solution==:
+
+**Stage 1**：`repeatFct`（不断产生随机数，带 stop + 2s 输出无人读自动停止，来自 a)）
+
+**Stage 2**：`takeN`（只取前 200 个随机数，然后触发 stop，让整个 pipeline 收敛结束）
+
+**Stage 3**：`fan-out × 3 filters`（三个并发 Harshad filter，从同一个输入流读；**命中则写入同一个共享 Queue**，不再输出到 channel)
+
+最后 `main` 等待所有 goroutine 结束，然后打印 Queue 内容
+
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"sync"
+	"time"
+)
+
+// -------------------- Queue (thread-safe) --------------------
+
+type Queue struct {
+	mu   sync.Mutex
+	data []int
+}
+
+// Enqueue 将一个元素加入队尾（加锁，避免多个 filter 并发写入导致 data race
+func (q *Queue) Enqueue(x int) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.data = append(q.data, x)
+}
+
+// Snapshot 复制当前内容用于最后打印（避免打印时被并发修改）。
+func (q *Queue) Snapshot() []int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	cp := make([]int, len(q.data))
+	copy(cp, q.data)
+	return cp
+}
+
+//
+// -------------------- a) repeatFct (with 2s not-read stop) --------------------
+//
+
+// repeatFct 不断调用 fct() 生成 int 并尝试发送到输出通道。
+// 停止条件：
+// 1。 stop 通道收到信号
+// 2。输出通道 2 秒都没有被读取（导致发送一直无法成功）
+func repeatFct(wg *sync.WaitGroup, stop <-chan bool, fct func() int) <-chan int {
+	intStream := make(chan int)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(intStream)
+
+		for {
+			select {
+			case <-stop:
+				// 外部请求停止
+				return
+
+			case intStream <- fct():
+				// 成功发送一个值，继续循环
+				// 注意：如果没人读，这个 case 不会被选中
+
+			case <-time.After(2 * time.Second):
+				// 2 秒内都无法完成发送（通常表示没人读），停止
+				return
+			}
+		}
+	}()
+
+	return intStream
+}
+
+//
+// -------------------- Stage 2: takeN --------------------
+//
+
+// takeN 从 input 读取最多 n 个数，并发送到输出。
+// 当读取到 n 个后：
+// - 关闭 output
+// - 通过 stopOnce safely close(stopCh)，整个 pipeline stops
+func takeN(
+	wg *sync.WaitGroup,
+	input <-chan int,
+	n int,
+	stopCh chan bool,
+	stopOnce *sync.Once,
+) <-chan int {
+	out := make(chan int)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(out)
+
+		count := 0
+		for v := range input {
+			out <- v
+			count++
+			if count >= n {
+				stopOnce.Do(func() { close(stopCh) })
+				return
+			}
+		}
+
+		// 如果 input 提前关闭，避免 goroutine 虚空挂载
+		stopOnce.Do(func() { close(stopCh) })
+	}()
+
+	return out
+}
+
+//
+// -------------------- Stage 3: filter (fan-out x3) --------------------
+//
+
+// filter：从 inputIntStream 读取整数。
+// 如果 filterFunc(v) 为真，把 v 放进 outputQueue。
+func filter(
+	wg *sync.WaitGroup,
+	stop <-chan bool,
+	inputIntStream <-chan int,
+	filterFunc func(int) bool,
+	outputQueue *Queue,
+) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for {
+			select {
+			case <-stop:
+				// 收到 stop，退出
+				return
+
+			case v, ok := <-inputIntStream:
+				// 没有更多数据了，也退出
+				if !ok {
+					return
+				}
+
+				if filterFunc(v) {
+					// 符合条件就写入共享队列
+					outputQueue.Enqueue(v)
+				}
+			}
+		}
+	}()
+}
+
+//
+// -------------------- Harshad helper --------------------
+//
+
+// sumDigits 计算十进制各位数字和
+func sumDigits(n int) int {
+	if n < 0 {
+		n = -n
+	}
+	s := 0
+	for n > 0 {
+		s += n % 10
+		n /= 10
+	}
+	return s
+}
+
+// isHarshad 判断是否 Harshad number
+func isHarshad(n int) bool {
+	if n <= 0 {
+		return false
+	}
+	s := sumDigits(n)
+	if s == 0 {
+		return false
+	}
+	return n%s == 0
+}
+
+//
+// -------------------- main: build pipeline --------------------
+//
+
+func main() {
+	// WaitGroup 用来等待所有 goroutine 退出
+	var wg sync.WaitGroup
+
+	// stopCh 是全局停止信号（用 close(stopCh) 广播）
+	stopCh := make(chan bool)
+
+	// stopOnce 确保 stopCh 只会 close 一次，否则 panic
+	var stopOnce sync.Once
+
+	// 共享队列：三个 filter 都会往里写
+	q := &Queue{}
+
+	// 随机数种子（保证每次运行不一样）
+	rand.Seed(time.Now().UnixNano())
+
+	// Stage 1: repeatFct -> 产生随机数
+	// 这里随机范围你可以按作业要求调整，我先给 1..1_000_000
+	stage1 := repeatFct(&wg, stopCh, func() int {
+		return rand.Intn(1_000_000) + 1
+	})
+
+	// Stage 2: takeN -> 只取 200 个随机数，然后触发 stop
+	stage2 := takeN(&wg, stage1, 200, stopCh, &stopOnce)
+
+	// Stage 3: fan-out 3 filters (concurrent)
+	// 三个 filter 从同一个 stage2 输入流读，谁抢到算谁的（典型 fan-out）。
+	filter(&wg, stopCh, stage2, isHarshad, q)
+	filter(&wg, stopCh, stage2, isHarshad, q)
+	filter(&wg, stopCh, stage2, isHarshad, q)
+
+	// 等待所有 goroutine 结束
+	wg.Wait()
+
+	// 打印队列内容
+	result := q.Snapshot()
+	fmt.Printf("Total Harshad numbers found (from 200 random ints): %d\n", len(result))
+	fmt.Println(result)
+}
+
+```
+
+#### Question 3
+
+The following function generates prime numbers that terminates by a given speccial pattern. A maximum number of trials is specified such that the function terminates even if the special prime cannot be found.
+
+> 下面的函数生成以给定的特定模式结束的素数。指定一个最大试验次数，即使找不到特殊素数，函数也会终止。
+
+```go
+// a special prime is a prime number that ends
+// with the specified pattern sequence
+// after nTrials the function returns with a false error code
+package main
+
+import (
+	"math"
+	"math/rand"
+)
+
+func getSpecialPrime(pattern int64, maxValue int64, nTrials int) (int64, bool) {
+	var div int64
+	for div = 10; pattern/div != 0; div *= 10 {
+
+	}
+	for i := 0; i < nTrials; i++ {
+		n := getPrime(maxValue)
+		if n%div == pattern {
+			return n, true // special prime found
+		}
+	}
+	return 0, false // we failed to find a special prime
+}
+
+// checks if it is a prime number
+func isPrime(v int64) bool {
+	sq := int64(math.Sqrt(float64(v))) + 1
+	var i int64
+	for i = 2; i < sq; i++ {
+		if v%i == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// returns a prime number
+func getPrime(maxValue int64) int64 {
+	for {
+		n := rand.Int63n(maxValue)
+		if isPrime(n) {
+			return n
+		}
+	}
+}
+
+```
+
+==Solution==:
+
+```go
+package main
+
+import (
+	"fmt"
+	"math"
+	"math/rand"
+	"time"
+)
+
+// getSpecialPrime tries to find a "special prime":
+// a prime number that ends with the decimal suffix "pattern".
+// It tries at most nTrials times, then returns (0, false) if not found.
+func getSpecialPrime(pattern int64, maxValue int64, nTrials int) (int64, bool) {
+	// -------- Basic input validation (avoid nonsense cases) --------
+	// pattern should be positive in this definition (suffix pattern).
+	if pattern <= 0 {
+		return 0, false
+	}
+	// maxValue must be large enough to generate primes.
+	// If maxValue <= 2, there are no primes in [0, maxValue).
+	if maxValue <= 2 {
+		return 0, false
+	}
+	// If pattern is >= maxValue, you cannot find a number < maxValue
+	// whose suffix equals pattern (because the whole number would need to be >= pattern).
+	// (Strictly, a longer number could end with pattern, but it's still < maxValue,
+	// so this is only impossible when maxValue is too small to allow suffix match.
+	// We keep it as a conservative guard: if maxValue <= pattern, it's impossible.)
+	if maxValue <= pattern {
+		return 0, false
+	}
+
+	// -------- Compute div = 10^(number of digits of pattern) --------
+	// Example: pattern=37 -> div=100; pattern=502 -> div=1000
+	var div int64
+	for div = 10; pattern/div != 0; div *= 10 {
+		// empty body: we only update div
+	}
+
+	// -------- Try up to nTrials random primes --------
+	for i := 0; i < nTrials; i++ {
+		n := getPrime(maxValue)
+
+		// Check if n ends with pattern (suffix match)
+		if n%div == pattern {
+			return n, true
+		}
+	}
+
+	// Failed after nTrials attempts
+	return 0, false
+}
+
+// isPrime checks whether v is a prime number.
+//
+// IMPORTANT FIX:
+// - v < 2 is NOT prime.
+// - Only test divisors up to sqrt(v).
+func isPrime(v int64) bool {
+	if v < 2 {
+		return false
+	}
+	if v == 2 {
+		return true
+	}
+	if v%2 == 0 {
+		return false
+	}
+
+	// Only check odd divisors up to sqrt(v)
+	sq := int64(math.Sqrt(float64(v)))
+	for i := int64(3); i <= sq; i += 2 {
+		if v%i == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// getPrime returns a random prime p such that 0 <= p < maxValue.
+// It keeps sampling until it hits a prime.
+func getPrime(maxValue int64) int64 {
+	for {
+		n := rand.Int63n(maxValue)
+		if isPrime(n) {
+			return n
+		}
+	}
+}
+
+func main() {
+	// Seed the RNG so each run is different
+	rand.Seed(time.Now().UnixNano())
+
+	// Example parameters (you can change these in your report/testing)
+	var (
+		pattern  int64 = 37
+		maxValue int64 = 1_000_000
+		nTrials        = 100_000
+	)
+
+	n, ok := getSpecialPrime(pattern, maxValue, nTrials)
+	if ok {
+		fmt.Printf("Found special prime ending with %d: %d\n", pattern, n)
+	} else {
+		fmt.Printf("Failed to find a special prime ending with %d after %d trials.\n", pattern, nTrials)
+	}
+}
+
+```
+
+The function performs at most nTrials attempts. Each attempt generates a random integer in `[0, maxValue)` and keeps it only if it is prime. It then checks whether the last k decimal digits of the prime match the given pattern by using `n % 10^k == pattern`. If found, it returns `(n, true)`; otherwise, after nTrials it returns `(0, false)`.
 
 ---
 
