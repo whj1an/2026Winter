@@ -737,12 +737,1730 @@ This project totally has 4 parts need to be done.
 4. Language and Paradigms
    1. java and go
 
-### Part 1 Java/OOP
+### Part 1 Java/OOP Stable Matching (Java)
 
 Create the classes needed to solve the stable matching problem for residents and programs with the iterative Gale-Shapley algorithm. Your program must be a Java application called StableMatching that takes as input the names of the two csv files containing the rank order lists of the residents and the programs.
 > 使用 迭代Gale-Shapley算法创建解决居民和项目稳定匹配问题所需的类。您的程序必须是一个名为StableMatching 的Java应用程序，它接受两个csv文件的名称作为输入，这两个文件包含居民和 程序的等级顺序列表
 
-### Part 2 Go
+This document walks through the four Java files that implement the **Gale–Shapley** (applicant-proposing) stable matching algorithm for residents and programs. Each section is split by method or logical block, with a short explanation before the code. Code and comments are unchanged from the source files.
+
+---
+
+#### 1. StableMatching.java
+
+This is the **entry point**. It parses command-line arguments, builds a `GaleShapley` instance, loads the CSV data, runs the matching algorithm, and writes the results. Any I/O or number-format error is caught and printed to stderr.
+
+---
+
+##### 1.1 Package and imports
+
+**Explanation:** The class lives in package `part1` and only needs `IOException` for the `main` method’s checked exceptions.
+
+```java
+package part1;
+
+/**
+ * Student Name: Haojian Wang
+ * Student Number: 300411829
+ * CSI 2120 - Project Part 1
+ */
+
+import java.io.IOException;
+```
+
+---
+
+##### 1.2 main(String[] args)
+
+**Explanation:** `main` checks that at least two arguments (residents CSV and programs CSV) are provided; the third argument is optional and defaults to `"output.txt"`. It then instantiates `GaleShapley`, calls `loadResidents` and `loadPrograms`, runs `runMatching()`, and finally `writeResults(outputFile)`. Exceptions are caught so that I/O errors, number-format errors, and any other failure are reported without crashing the JVM.
+
+```java
+public class StableMatching {
+    public static void main(String[] args) {
+        if ( args.length < 2 ) {
+            System.out.println("Usage: java part1.StableMatching <residents.csv> <programs.csv> [output.txt]");
+            return;
+        }
+
+        String residentsFile = args[0];
+        String programsFile = args[1];
+
+        String outputFile = ( args.length >= 3 ) ? args[2] :"output.txt";
+
+        try {
+            GaleShapley gs = new GaleShapley();
+            gs.loadResidents(residentsFile);
+            gs.loadPrograms(programsFile);
+
+            // Run iterative Gale–Shapley algorithm
+            gs.runMatching();
+
+            // Write required output file + print required summary lines
+            gs.writeResults(outputFile);
+
+        } catch (IOException e) {
+            System.err.println("I/O Error: " + e.getMessage());
+        } catch (NumberFormatException e) {
+            System.err.println("Number Format Error: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Unexpected Error: " + e.getMessage());
+        }
+    }
+}
+```
+
+---
+
+#### 2. Resident.java
+
+The **Resident** class represents one applicant (resident). It stores identity and rank-order list (ROL) of programs, the current match (if any), and an index used to iterate over the ROL during the algorithm. All methods used by the Gale–Shapley loop are defined here.
+
+---
+
+##### 2.1 Package, imports, and class fields
+
+**Explanation:** Each resident has an ID, first name, last name, and a ROL of program IDs (strings). The current match is held as a `Program` reference and a `matchedRank` (that resident’s rank in that program’s list; -1 if unmatched). `nextProposalIndex` is the index of the next program in `rol` that this resident will propose to in the iterative algorithm.
+
+```java
+package part1;
+
+/*
+ * Student Name: Haojian Wang
+ * Student Number: 300411829
+ */
+
+import java.util.Arrays;
+
+public class Resident {
+
+    // ========== Profs' ==========
+    private int residentID;
+    private String firstname;
+    private String lastname;
+
+    // Resident（program IDs），例如 ["NRS","HEP","MMI"] ???
+    private String[] rol;
+
+    // if 匹配到的 Program；else 未匹配则为 null
+    private Program matchedProgram;
+
+    // resident 在 matchedProgram 的 ROL 中的排名（数值越小越好），未匹配可用 -1
+    private int matchedRank;
+
+    // ========== Assistance ==========
+    // 记录这个 resident 下一次要向 rol 的第几个 program 提案
+    // mark this resident as for next which program will be chosen for rol
+    private int nextProposalIndex;
+```
+
+---
+
+##### 2.2 Constructor
+
+**Explanation:** The constructor sets ID and name and leaves ROL unset (to be set later via `setROL`). It initializes the resident as unmatched (`matchedProgram = null`, `matchedRank = -1`) and sets `nextProposalIndex = 0` so the first proposal will be to `rol[0]` once the ROL is set.
+
+```java
+    public Resident(int id, String fname, String lname) {
+        this.residentID = id;
+        this.firstname = fname;
+        this.lastname = lname;
+
+        // 初始状态：未匹配 Initial States
+        this.matchedProgram = null;
+        this.matchedRank = -1;
+
+        // 初始从 rol[0] 开始提案 Start rol[0]
+        this.nextProposalIndex = 0;
+    }
+```
+
+---
+
+##### 2.3 setROL(String[] rol)
+
+**Explanation:** Called after reading the resident from CSV. It stores the rank-order list of program IDs so that later `nextProgramToPropose()` can walk through them in order.
+
+```java
+    // 设置 ROL（从 CSV 读出来后调用）ROL Setter, used after reading CSV
+    public void setROL(String[] rol) {
+        this.rol = rol;
+    }
+```
+
+---
+
+##### 2.4 Getters and setters
+
+**Explanation:** Standard accessors for resident ID, name, ROL, and match state. `setMatchedProgram` and `setMatchedRank` are used by programs when they accept or update a resident’s match.
+
+```java
+    // ================== getters / setters ==================
+
+    public int getResidentID() {
+        return residentID;
+    }
+
+    public String getFirstname() {
+        return firstname;
+    }
+
+    public String getLastname() {
+        return lastname;
+    }
+
+    public String[] getRol() {
+        return rol;
+    }
+
+    public Program getMatchedProgram() {
+        return matchedProgram;
+    }
+
+    public int getMatchedRank() {
+        return matchedRank;
+    }
+
+    public void setMatchedProgram(Program p) {
+        this.matchedProgram = p;
+    }
+
+    public void setMatchedRank(int rank) {
+        this.matchedRank = rank;
+    }
+```
+
+---
+
+##### 2.5 hasMoreProposals()
+
+**Explanation:** Used by the Gale–Shapley driver to see if this resident still has programs left to propose to. Returns true when `rol` is set and `nextProposalIndex` has not reached the end of the array.
+
+```java
+    // ========== 迭代 Gale–Shapley ==========
+    // Additional
+    // if programs, resident continues
+    public boolean hasMoreProposals() {
+        return rol != null && nextProposalIndex < rol.length;
+    }
+```
+
+---
+
+##### 2.6 nextProgramToPropose()
+
+**Explanation:** Returns the next program ID in the resident’s ROL and advances the internal index. If there are no more programs to propose to, it returns null. The driver uses this to get the next program and then calls that program’s `addResident`.
+
+```java
+    // 取出下一所要申请的 programID，并把指针往后移动
+    // if no 可申请的，return null
+    public String nextProgramToPropose() {
+        if (!hasMoreProposals()) {
+            return null;
+        }
+        String programID = rol[nextProposalIndex];
+        nextProposalIndex++;
+        return programID;
+    }
+```
+
+---
+
+##### 2.7 unmatch()
+
+**Explanation:** Called when a program evicts this resident (e.g. because a more preferred resident was accepted). It clears the match so the resident is “available” again and can be re-queued to propose to the next program on their list.
+
+```java
+    // 当 resident 被 program 踢出时：取消匹配（回到 available 状态）
+    public void unmatch() {
+        this.matchedProgram = null;
+        this.matchedRank = -1;
+    }
+```
+
+---
+
+##### 2.8 isMatched()
+
+**Explanation:** Convenience method for the driver and output logic: true if this resident currently holds a program (matchedProgram is not null).
+
+```java
+    // 判断是否已经匹配 case for whether has been chosen
+    public boolean isMatched() {
+        return matchedProgram != null;
+    }
+```
+
+---
+
+##### 2.9 toString()
+
+**Explanation:** Provides a short string for debugging: resident ID, name, and the ROL array so you can inspect state in logs or an IDE.
+
+```java
+    // string representation
+    @Override
+    public String toString() {
+        return "[" + residentID + "]: " + firstname + " " + lastname
+                + " ROL=" + (rol == null ? "null" : Arrays.toString(rol));
+    }
+}
+```
+
+---
+
+#### 3. Program.java
+
+The **Program** class represents one residency program. It has a quota, a rank-order list of resident IDs, and a list of currently matched residents. It exposes methods to check membership and rank in the ROL, to find the least preferred current match, and to accept or reject a proposing resident (possibly evicting someone). The inner class `AddResult` bundles the decision and any evicted resident.
+
+---
+
+##### 3.1 Package, imports, and class fields
+
+**Explanation:** Each program has an ID, name, and quota. `rol` is the full preference list (resident IDs in order). `matchedResidents` is the list of residents currently held. `rankMap` is built from `rol` so we can answer “what is this resident’s rank?” in O(1) and “is this resident in our ROL?” without scanning the array.
+
+```java
+package part1;
+
+// Project CSI2120/CSI2520
+// Winter 2026
+// Robert Laganiere, uottawa.ca
+
+
+/**
+ * Student Name: Haojian Wang
+ * Student Number: 300411829
+ */
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+// this is the (incomplete) Program class
+public class Program {
+	
+	private String programID;
+	private String name;
+	private int quota;
+	private int[] rol;
+	
+    private ArrayList<Resident> matchedResidents;
+
+    private HashMap<Integer, Integer> rankMap;
+```
+
+---
+
+##### 3.2 Constructor
+
+**Explanation:** Initializes ID, name, and quota. Allocates empty lists for matched residents and for the rank map; the rank map is filled when `setROL` is called.
+
+```java
+    public Program(String id, String n, int q) {
+	
+		this.programID= id;
+		this.name= n;
+		this.quota= q;
+
+        this.matchedResidents= new ArrayList<>();
+        this.rankMap= new HashMap<>();
+	}
+```
+
+---
+
+##### 3.3 setROL(int[] rol)
+
+**Explanation:** Sets the program’s preference list and rebuilds `rankMap` so that each resident ID maps to its 0-based index in the ROL. Lower index means more preferred. This is used by `rank()` and `member()` during the matching loop.
+
+```java
+    // the rol in order of preference, build rankMap
+	public void setROL(int[] rol) {
+		this.rol= rol;
+
+        // residentID -> rank
+        rankMap.clear();
+        for (int i = 0; i < rol.length; i++) {
+            rankMap.put(rol[i], i);
+
+        }
+	}
+```
+
+---
+
+##### 3.4 Getters
+
+**Explanation:** Standard accessors so the driver and output code can read the program’s quota, name, ID, and the list of currently matched residents.
+
+```java
+    // =========== getters ===========
+
+    public int getQuota() {
+        return quota;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getProgramID() {
+        return programID;
+    }
+
+    public ArrayList<Resident> getMatchedResidents() {
+        return matchedResidents;
+    }
+```
+
+---
+
+##### 3.5 member(int residentID)
+
+**Explanation:** Returns whether the given resident ID appears in this program’s ROL. Used by `addResident` to reject residents the program did not rank.
+
+```java
+    // ------------------------------------------------
+
+    // member(residentID): resident 是否在该 program 的 ROL 中
+    public boolean member(int residentID) {
+        return rankMap.containsKey(residentID);
+    }
+```
+
+---
+
+##### 3.6 rank(int residentID)
+
+**Explanation:** Returns the 0-based rank of the resident in this program’s ROL (lower is more preferred). Returns -1 if the resident is not in the ROL. Used when comparing the proposing resident to the current worst match.
+
+```java
+    // rank(residentID): 返回 resident 在 program ROL 的排名；不在则 -1
+    public int rank(int residentID) {
+        Integer r = rankMap.get(residentID);
+        return (r == null) ? -1 : r;
+    }
+```
+
+---
+
+##### 3.7 leastPreferred()
+
+**Explanation:** Among the residents currently in `matchedResidents`, returns the one with the **highest** (worst) rank in this program’s ROL. Used when the program is full and we need to decide whether to evict someone in favour of the new proposer.
+
+```java
+    // leastPreferred(): 返回当前 matchedResidents 中 program 最不喜欢的那位
+    // "最不喜欢"= rank 最大（数字越大代表越靠后）
+    public Resident leastPreferred() {
+        if (matchedResidents.isEmpty()) {
+            return null;
+        }
+
+        Resident worst = matchedResidents.get(0);
+        for (Resident r : matchedResidents) {
+            if (r.getMatchedRank() > worst.getMatchedRank()) {
+                worst = r;
+            }
+        }
+        return worst;
+    }
+```
+
+---
+
+##### 3.8 addResident(Resident resident)
+
+**Explanation:** Implements the program’s decision when a resident proposes. (1) If the resident is not in the program’s ROL, reject and return not accepted, no eviction. (2) If the program is below quota, accept the resident and update their match state; return accepted, no eviction. (3) If at quota, compare the new resident’s rank to the current worst; if the new resident is strictly better, evict the worst (call `unmatch()` on them), add the new resident, and return accepted with the evicted resident. (4) Otherwise reject. The return value is an `AddResult` so the driver can both see whether the proposer was accepted and who (if anyone) to re-queue.
+
+```java
+    // ---------------------------------------
+    /*
+     * addResident(resident):
+     *  - 若 program 不认识这个 resident（不在 program ROL），直接拒绝（return false）
+     *  - 若未满 quota：接收
+     *  - 若已满 quota：若更喜欢新 resident，则替换 leastPreferred
+     *
+     * 为了方便 GaleShapley 驱动循环，这里返回 "被踢出的 resident"（若没有踢人则返回 null）。
+     * 如果新 resident 被拒绝，也返回 null，但会通过 boolean 告知是否接收。
+     */
+    public AddResult addResident(Resident resident) {
+
+        int rid = resident.getResidentID();
+
+        // 1) if 不在 program ROL 里，return
+        if (!member(rid)) {
+            return new AddResult(false, null);
+        }
+
+        // 计算该 resident 在 program ROL 的 rank, lees -> good
+        int newRank = rank(rid);
+
+        // 2) if 还没满 quota，do
+        if (matchedResidents.size() < quota) {
+            matchedResidents.add(resident);
+
+            // refresh resident 的匹配信息
+            resident.setMatchedProgram(this);
+            resident.setMatchedRank(newRank);
+
+            return new AddResult(true, null);
+        }
+
+        // 3) if 已满 quota：看是否比当前最差者更好 which one is batter
+        Resident worst = leastPreferred();
+        if (worst == null) {
+            // 理论上不会发生（因为 size>=quota>=1)
+            return new AddResult(false, null);
+        }
+
+        // 如果新 resident rank 更小 => program 更喜欢新的人
+        if (newRank < worst.getMatchedRank()) {
+
+            // 替换：把 worst 踢掉
+            matchedResidents.remove(worst);
+            worst.unmatch(); // 被踢出后变为 available
+
+            // 接收新 resident
+            matchedResidents.add(resident);
+            resident.setMatchedProgram(this);
+            resident.setMatchedRank(newRank);
+
+            return new AddResult(true, worst);
+        }
+
+        // 4) 否则拒绝新 resident
+        return new AddResult(false, null);
+    }
+```
+
+---
+
+##### 3.9 AddResult (inner class)
+
+**Explanation:** A small value object used as the return type of `addResident`. It carries whether the proposer was accepted and, if someone was evicted, that resident. The driver uses this to add the evicted resident back to the queue when applicable.
+
+```java
+    // 用于把"接收与否 + 被踢出的人"一起返回（非 static）
+    public class AddResult {
+        private boolean accepted;
+        private Resident evicted;
+
+        public AddResult(boolean accepted, Resident evicted) {
+            this.accepted = accepted;
+            this.evicted = evicted;
+        }
+
+        public boolean isAccepted() {
+            return accepted;
+        }
+
+        public Resident getEvicted() {
+            return evicted;
+        }
+    }
+```
+
+---
+
+##### 3.10 toString()
+
+**Explanation:** Debug string: program ID, name, quota, and length of the ROL.
+
+```java
+    // string representation
+    @Override
+	public String toString() {
+      
+       return "["+programID+"]: "+name+" {"+ quota+ "}" +" ("+rol.length+")";	  
+	}
+}
+```
+
+---
+
+#### 4. GaleShapley.java
+
+This class **owns** the resident and program maps, **loads** them from CSV via `readResidents` and `readPrograms`, **runs** the iterative Gale–Shapley algorithm in `runMatching()`, and **writes** the required output file and summary lines in `writeResults`. It is the central driver for Part 1.
+
+---
+
+##### 4.1 Package, imports, and class fields
+
+**Explanation:** Two maps: residents by ID (Integer) and programs by ID (String). The constructor and getters are straightforward; the real work is in the private readers and the public `loadResidents`/`loadPrograms`/`runMatching`/`writeResults` methods.
+
+```java
+package part1;
+
+// Project CSI2120/CSI2520
+// Winter 2026
+// Robert Laganiere, uottawa.ca
+
+import java.io.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+
+// this is the (incomplete) class that will generate the resident and program maps
+public class GaleShapley {
+
+	private HashMap<Integer,Resident> residents;
+	private HashMap<String,Program> programs;
+
+    // create two hash map for residents and programs
+    public GaleShapley() {
+        residents = new HashMap<>();
+        programs = new HashMap<>();
+    }
+    //Residents getter
+    public HashMap<Integer,Resident> getResidents() {
+        return residents;
+    }
+    // Programs getter
+    public HashMap<String,Program> getPrograms() {
+        return programs;
+    }
+```
+
+---
+
+##### 4.2 loadResidents and loadPrograms
+
+**Explanation:** Public entry points that delegate to the private CSV readers. They allow the caller (e.g. `StableMatching.main`) to load both files and let the reader methods throw `IOException` or `NumberFormatException` if the format is wrong.
+
+```java
+    public void loadResidents(String filename) throws IOException, NumberFormatException {
+        readResidents(filename);
+    }
+
+    public void loadPrograms(String filename) throws IOException, NumberFormatException {
+        readPrograms(filename);
+    }
+```
+
+---
+
+##### 4.3 readResidents(String residentsFilename)
+
+**Explanation:** Opens the residents CSV and skips the header. For each data line it parses, in order: resident ID (up to first comma), first name, last name, then the quoted program list (e.g. `"NRS,HEP,MMI"`). It constructs a `Resident`, sets the ROL via `setROL`, and puts the resident into the `residents` map. Parsing is done with index arithmetic and `substring`/`split`; invalid lines or missing fields cause an `IOException` or `NumberFormatException`.
+
+```java
+    // =========== CVS 读取 READERS START=========
+	// Reads the residents csv file
+	// It populates the residents HashMap
+    private void readResidents(String residentsFilename) throws IOException,
+													NumberFormatException {
+
+        String line;
+		residents= new HashMap<Integer,Resident>();
+		BufferedReader br = new BufferedReader(new FileReader(residentsFilename));
+
+		int residentID;
+		String firstname;
+		String lastname;
+		String plist;
+		String[] rol;
+
+		// Read each line from the CSV file
+		line = br.readLine(); // skipping first line
+		while ((line = br.readLine()) != null && line.length() > 0) {
+
+			int split;
+			int i;
+
+			// extracts the resident ID
+			for (split=0; split < line.length(); split++) {
+				if (line.charAt(split) == ',') {
+					break;
+				}
+			}
+			if (split > line.length()-2)
+				throw new IOException("Error: Invalid line format: " + line);
+
+			residentID= Integer.parseInt(line.substring(0,split));
+			split++;
+
+			// extracts the resident firstname
+			for (i= split ; i < line.length(); i++) {
+				if (line.charAt(i) == ',') {
+					break;
+				}
+			}
+			if (i > line.length()-2)
+				throw new IOException("Error: Invalid line format: " + line);
+
+			firstname= line.substring(split,i);
+			split= i+1;
+
+			// extracts the resident lastname
+			for (i= split ; i < line.length(); i++) {
+				if (line.charAt(i) == ',') {
+					break;
+				}
+			}
+			if (i > line.length()-2)
+				throw new IOException("Error: Invalid line format: " + line);
+
+			lastname= line.substring(split,i);
+			split= i+1;
+
+			Resident resident= new Resident(residentID,firstname,lastname);
+
+			for (i= split ; i < line.length(); i++) {
+				if (line.charAt(i) == '"') {
+					break;
+				}
+			}
+
+			// extracts the program list
+			plist= line.substring(i+2,line.length()-2);
+			String delimiter = ","; // Assuming values are separated by commas
+			rol = plist.split(delimiter);
+
+			resident.setROL(rol);
+
+			residents.put(residentID,resident);
+		}
+        // Important: close the file
+        br.close();
+    }
+```
+
+---
+
+##### 4.4 readPrograms(String programsFilename)
+
+**Explanation:** Same idea as `readResidents` but for the programs file. Each line gives program ID, name, quota, and a quoted list of resident IDs. A `Program` is created, its ROL is set with `setROL(rol)` (which builds the rank map), and the program is put into the `programs` map. The reader closes the file when done.
+
+```java
+	// Reads the programs csv file
+	// It populates the programs HashMap
+    private void readPrograms(String programsFilename) throws IOException,
+													NumberFormatException {
+
+        String line;
+		programs= new HashMap<String,Program>();
+		BufferedReader br = new BufferedReader(new FileReader(programsFilename));
+
+		String programID;
+		String name;
+		int quota;
+		String rlist;
+		int[] rol;
+
+		// Read each line from the CSV file
+		line = br.readLine(); // skipping first line
+		while ((line = br.readLine()) != null && line.length() > 0) {
+
+			int split;
+			int i;
+
+			// extracts the program ID
+			for (split=0; split < line.length(); split++) {
+				if (line.charAt(split) == ',') {
+					break;
+				}
+			}
+			if (split > line.length()-2)
+				throw new IOException("Error: Invalid line format: " + line);
+
+
+			programID= line.substring(0,split);
+			split++;
+
+			// extracts the program name
+			for (i= split ; i < line.length(); i++) {
+				if (line.charAt(i) == ',') {
+					break;
+				}
+			}
+			if (i > line.length()-2)
+				throw new IOException("Error: Invalid line format: " + line);
+
+			name= line.substring(split,i);
+			split= i+1;
+
+			// extracts the program quota
+			for (i= split ; i < line.length(); i++) {
+				if (line.charAt(i) == ',') {
+					break;
+				}
+			}
+			if (i > line.length()-2)
+				throw new IOException("Error: Invalid line format: " + line);
+
+			quota= Integer.parseInt(line.substring(split,i));
+			split= i+1;
+
+			Program program= new Program(programID,name,quota);
+
+			for (i= split ; i < line.length(); i++) {
+				if (line.charAt(i) == '"') {
+					break;
+				}
+			}
+
+			// extracts the resident list
+			rlist= line.substring(i+2,line.length()-2);
+			String delimiter = ","; // Assuming values are separated by commas
+			String[] rol_string = rlist.split(delimiter);
+			rol= new int[rol_string.length];
+			for (int j=0; j<rol_string.length; j++) {
+
+				rol[j]= Integer.parseInt(rol_string[j]);
+			}
+
+			program.setROL(rol);
+
+			programs.put(programID,program);
+		}
+        // Important: close the file
+        br.close();
+    }
+    // ============ CVS 读取 READERS OVER ==========
+```
+
+---
+
+##### 4.5 runMatching()
+
+**Explanation:** This implements the **iterative applicant-proposing Gale–Shapley** algorithm. A queue holds residents who are still “available” (unmatched and with more programs to propose to). Initially all such residents are enqueued. The main loop repeatedly takes a resident from the front; if they are already matched (e.g. re-queued after being evicted and then matched again), skip. Otherwise, in an inner loop, the resident proposes to the next program on their list (skipping unknown program IDs). The program’s `addResident` is called; if the result is accepted, any evicted resident (if non-null and still having proposals) is added to the back of the queue, and we break out of the inner loop. If the resident is still unmatched but has more proposals, they are re-queued so they will propose again in a later round. The process continues until the queue is empty.
+
+```java
+    public void runMatching() {
+        // Queue of available residents (unmatched + still have programs to propose to)
+        ArrayDeque<Resident> queue = new ArrayDeque<>();
+
+        // Initialize: all residents start unmatched
+        for (Resident r : residents.values()) {
+            if (r.hasMoreProposals()) {
+                queue.add(r);
+            }
+        }
+
+        // Iterative applicant-proposing Gale–Shapley
+        while (!queue.isEmpty()) {
+
+            Resident r = queue.removeFirst();
+
+            // If already matched (can happen if added twice), skip
+            if (r.isMatched()) {
+                continue;
+            }
+
+            // Propose until accepted or resident exhausts their ROL
+            while (r.hasMoreProposals() && !r.isMatched()) {
+
+                String programID = r.nextProgramToPropose();
+
+                // 如果居民列出一个未知的程序id，跳过
+                // If resident listed an unknown programID, skip
+                Program p = programs.get(programID);
+                if (p == null) {
+                    continue;
+                }
+
+                // 到此一游 Oo
+                // Program decides accept/reject/evict based on its ROL and quota
+                Program.AddResult result = p.addResident(r);
+
+                if (result.isAccepted()) {
+                    // If someone was evicted, they become available again
+                    Resident evicted = result.getEvicted();
+                    if (evicted != null && evicted.hasMoreProposals()) {
+                        queue.addLast(evicted);
+                    }
+                    break; // r is matched now
+                }
+            }
+
+            // If still unmatched but can still propose (rare), re-queue
+            if (!r.isMatched() && r.hasMoreProposals()) {
+                queue.addLast(r);
+            }
+        }
+    }
+```
+
+---
+
+##### 4.6 writeResults(String outputFilename)
+
+**Explanation:** Builds the required output file and summary lines. It collects all residents, sorts them by last name then first name (case-insensitive) for readability. It counts unmatched residents and available positions (sum over programs of quota minus current matches). It writes the header line and one row per resident: lastname, firstname, residentID, and either `XXX,NOT_MATCHED` or the matched program’s ID and name. Then it appends the two summary lines to the file and also prints them to the console. The file is closed when done.
+
+```java
+    /**
+     * Writes the required output file and prints the required summary lines.
+     * Output columns:
+     * lastname,firstname,residentID,programID,name
+     *
+     * Unmatched residents must use:
+     * programID=XXX, name=NOT_MATCHED
+     * damn...
+     */
+    public void writeResults(String outputFilename) throws IOException {
+
+        ArrayList<Resident> allResidents = new ArrayList<>(residents.values());
+
+        // Sorting is not required, but makes output easier to read
+        allResidents.sort(new Comparator<Resident>() {
+            @Override
+            public int compare(Resident a, Resident b) {
+                int c = a.getLastname().compareToIgnoreCase(b.getLastname());
+                if (c != 0) return c;
+                return a.getFirstname().compareToIgnoreCase(b.getFirstname());
+            }
+        });
+
+        int unmatchedCount = 0;
+        int availablePositions = 0;
+
+        // Total remaining positions across all programs
+        for (Program p : programs.values()) {
+            availablePositions += (p.getQuota() - p.getMatchedResidents().size());
+        }
+
+        BufferedWriter bw = new BufferedWriter(new FileWriter(outputFilename));
+
+        // Header
+        bw.write("lastname,firstname,residentID,programID,name");
+        bw.newLine();
+
+        // Rows
+        for (Resident r : allResidents) {
+            if (!r.isMatched()) {
+                unmatchedCount++;
+                bw.write(r.getLastname() + "," + r.getFirstname() + "," + r.getResidentID() + ",XXX,NOT_MATCHED");
+            } else {
+                Program p = r.getMatchedProgram();
+                bw.write(r.getLastname() + "," + r.getFirstname() + "," + r.getResidentID() + "," + p.getProgramID() + "," + p.getName());
+            }
+            bw.newLine();
+        }
+
+        // Required summary lines (also print to console)
+        String line1 = "Number of unmatched residents: " + unmatchedCount;
+        String line2 = "Number of positions available: " + availablePositions;
+
+        System.out.println(line1);
+        System.out.println(line2);
+
+        // Also append to file (useful for submission)
+        bw.write(line1);
+        bw.newLine();
+        bw.write(line2);
+        bw.newLine();
+
+        bw.close();
+    }
+
+}
+```
+
+---
+
+#### Summary
+
+| File             | Role                                                                 |
+|------------------|----------------------------------------------------------------------|
+| **StableMatching** | Entry point: CLI, load data, run matching, write results; catches exceptions. |
+| **Resident**       | One applicant: ID, name, ROL, match state, next-proposal index; methods for the driver. |
+| **Program**        | One program: quota, ROL, matched list, rank map; accept/reject/evict via `addResident`; `AddResult` inner class. |
+| **GaleShapley**    | Maps, CSV readers, iterative Gale–Shapley loop, and output writer.  |
+
+The flow is: **StableMatching.main** → **GaleShapley** (load → runMatching → writeResults). **runMatching** uses a queue of residents and repeatedly has them propose via **Resident.nextProgramToPropose**; **Program.addResident** decides accept/reject/evict and returns an **AddResult** so evicted residents can be re-queued.
+
+
+### Part 2 — Stable Matching (Go)
+
+#### Project structure
+
+Part 2’s Go implementation has two programs: **sequential** (single-threaded) and **concurrent**. Both use the McVitie–Wilson recursive algorithm; the concurrent version uses goroutines and Mutex, while the sequential version uses only plain function calls.
+
+```
+Project/
+├── java/
+│   └── src/
+│       └── part1/
+│           ├── GaleShapley.java
+│           ├── Program.java
+│           ├── Resident.java
+│           └── StableMatching.java
+└── go/
+    ├── sequential/
+    │   └── main.go    # single-threaded: no goroutines, no Mutex
+    └── concurrent/
+        └── main.go    # concurrent: every offer is a goroutine; Mutex protects shared data
+```
+
+---
+
+#### 1. Concurrent version — `go/concurrent/main.go`
+
+---
+
+##### 1.1 Package and imports (concurrent)
+
+**Explanation:** The program uses package `main`. The concurrent version imports `sync` (Mutex, WaitGroup) and `time` (timing); the rest are for file/string handling (`bufio`, `os`, `strings`, `strconv`) and output/sorting (`fmt`, `sort`).
+
+```go
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+```
+
+---
+
+##### 1.2 Data types: Resident and Program (concurrent)
+
+**Explanation:**  
+- **Resident:** Holds the resident’s ID, name, rank-order list `rol`, current match `matchedProgram`, and the next index to propose to `nextIdx`. The concurrent version uses `mu sync.Mutex` to guard `nextIdx` and `matchedProgram` so multiple goroutines do not modify the same resident at once.  
+- **Program:** Holds the program’s ID, name, quota `nPositions`, preference list `rol`, and currently selected residents `selectedResidents`. `rankCache` is a read-only map from residentID to rank index for O(1) preference comparison. `mu` guards `selectedResidents`.
+
+```go
+// Resident holds one applicant's data and current match state.
+type Resident struct {
+	residentID     int
+	firstname      string
+	lastname       string
+	rol            []string   // preferred program IDs, index 0 = most preferred
+	matchedProgram string     // "" means unmatched
+	nextIdx        int        // next program index to propose to in rol
+	mu             sync.Mutex // guards nextIdx and matchedProgram
+}
+
+// Program holds one residency program's data and current match state.
+type Program struct {
+	programID         string
+	name              string
+	nPositions        int
+	rol               []int       // preferred resident IDs
+	selectedResidents []int       // IDs of currently matched residents
+	rankCache         map[int]int // residentID -> rank index; read-only after loading
+	mu                sync.Mutex  // guards selectedResidents
+}
+```
+
+---
+
+##### 1.3 Program helper methods (concurrent)
+
+**Explanation:**  
+- **member:** Returns whether the resident is in the program’s preference list (read-only `rankCache`, no lock needed).  
+- **rank:** Returns the 0-based rank of the resident in the program’s ROL; lower index means more preferred; returns -1 if not found.  
+- **leastPreferred:** Among currently selected residents, returns the one the program likes least (highest rank index). **Must be called with `p.mu` held.**  
+- **removeResident:** Removes a resident ID from `selectedResidents` using swap-with-last for O(1) removal. **Must be called with `p.mu` held.**
+
+```go
+func (p *Program) member(residentID int) bool {
+	_, ok := p.rankCache[residentID]
+	return ok
+}
+
+func (p *Program) rank(residentID int) int {
+	if r, ok := p.rankCache[residentID]; ok {
+		return r
+	}
+	return -1
+}
+
+func (p *Program) leastPreferred() int {
+	if len(p.selectedResidents) == 0 {
+		return -1
+	}
+	worst := p.selectedResidents[0]
+	worstRank := p.rank(worst)
+	for _, rid := range p.selectedResidents {
+		if p.rank(rid) > worstRank {
+			worstRank = p.rank(rid)
+			worst = rid
+		}
+	}
+	return worst
+}
+
+func (p *Program) removeResident(rid int) {
+	for i, id := range p.selectedResidents {
+		if id == rid {
+			last := len(p.selectedResidents) - 1
+			p.selectedResidents[i] = p.selectedResidents[last]
+			p.selectedResidents = p.selectedResidents[:last]
+			return
+		}
+	}
+}
+```
+
+---
+
+##### 1.4 McVitie–Wilson: offer (concurrent)
+
+**Explanation:** In the concurrent version, **every call to `offer` runs inside a goroutine**. The caller runs `wg.Add(1)` before `go offer(...)`, and `offer` uses `defer wg.Done()` at the top so the counter is decremented on every return path.  
+Logic: lock the resident and read `nextIdx` and `rol`; if the ROL is exhausted set `matchedProgram = ""` and return; otherwise take the current program `pid`, increment `nextIdx`, **then unlock** (to avoid deadlock when entering `evaluate`), and call `evaluate(rid, pid, ...)`.
+
+```go
+func offer(rid int, residents map[int]*Resident, programs map[string]*Program, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	r := residents[rid]
+
+	r.mu.Lock()
+	if r.nextIdx >= len(r.rol) {
+		r.matchedProgram = ""
+		r.mu.Unlock()
+		return
+	}
+	pid := r.rol[r.nextIdx]
+	r.nextIdx++
+	r.mu.Unlock()
+
+	evaluate(rid, pid, residents, programs, wg)
+}
+```
+
+---
+
+##### 1.5 McVitie–Wilson: evaluate (concurrent)
+
+**Explanation:** Handles the three cases when resident `rid` applies to program `pid`.  
+- **Case 1:** Program did not rank `rid` → reject; `wg.Add(1); go offer(rid, ...)` so the resident tries the next choice.  
+- **Case 2:** Program has space → accept `rid`, update `selectedResidents` and `rid`’s `matchedProgram`, then return.  
+- **Case 3:** Program is full. If the program prefers `rid` over the current worst match `lp`, displace `lp`, update both sides’ state, **release the program lock first**, then `go offer(lp, ...)`; otherwise reject `rid`, **release the lock**, then `go offer(rid, ...)`.  
+Convention: never acquire a Program lock while holding a Resident lock; release the Program lock before spawning a new goroutine so locks are not held across goroutine boundaries.
+
+```go
+func evaluate(rid int, pid string, residents map[int]*Resident, programs map[string]*Program, wg *sync.WaitGroup) {
+	r := residents[rid]
+	p := programs[pid]
+
+	if !p.member(rid) {
+		wg.Add(1)
+		go offer(rid, residents, programs, wg)
+		return
+	}
+
+	p.mu.Lock()
+
+	if len(p.selectedResidents) < p.nPositions {
+		p.selectedResidents = append(p.selectedResidents, rid)
+		r.mu.Lock()
+		r.matchedProgram = pid
+		r.mu.Unlock()
+		p.mu.Unlock()
+		return
+	}
+
+	lp := p.leastPreferred()
+
+	if p.rank(rid) < p.rank(lp) {
+		p.removeResident(lp)
+		p.selectedResidents = append(p.selectedResidents, rid)
+		r.mu.Lock()
+		r.matchedProgram = pid
+		r.mu.Unlock()
+		lpRes := residents[lp]
+		lpRes.mu.Lock()
+		lpRes.matchedProgram = ""
+		lpRes.mu.Unlock()
+		p.mu.Unlock()
+		wg.Add(1)
+		go offer(lp, residents, programs, wg)
+	} else {
+		p.mu.Unlock()
+		wg.Add(1)
+		go offer(rid, residents, programs, wg)
+	}
+}
+```
+
+---
+
+##### 1.6 CSV parsing, loading, output, and main (concurrent)
+
+**Explanation:**  
+- **splitCSVLine:** Splits a line on commas but ignores commas inside quotes (e.g. `"[NRS,HEP,MMI]"` is one field).  
+- **parseStringList / parseIntList:** Parse `"[NRS,HEP,MMI]"` and `"[574,517,226]"` into `[]string` and `[]int`.  
+- **loadResidents / loadPrograms:** Read CSV, skip header, build Resident/Program per row; Program precomputes `rankCache`. Use `scanner.Buffer` for large files.  
+- **printResults:** Sort by lastname then firstname and print in the required format; then print unmatched count and open positions.  
+- **main:** Check CLI args, load data (not timed), then `start := time.Now()`, for each resident `wg.Add(1); go offer(...)`, `wg.Wait()`, `end := time.Now()`, then print results and `Execution time` (printing is excluded from the timed section).
+
+```go
+func splitCSVLine(line string) []string {
+	var fields []string
+	var current strings.Builder
+	inQuotes := false
+	for _, c := range line {
+		switch {
+		case c == '"':
+			inQuotes = !inQuotes
+		case c == ',' && !inQuotes:
+			fields = append(fields, current.String())
+			current.Reset()
+		default:
+			current.WriteRune(c)
+		}
+	}
+	fields = append(fields, current.String())
+	return fields
+}
+
+func parseStringList(s string) []string {
+	s = strings.Trim(s, "[] \t")
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+func parseIntList(s string) []int {
+	s = strings.Trim(s, "[] \t")
+	if s == "" {
+		return []int{}
+	}
+	parts := strings.Split(s, ",")
+	result := make([]int, 0, len(parts))
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t == "" {
+			continue
+		}
+		n, err := strconv.Atoi(t)
+		if err == nil {
+			result = append(result, n)
+		}
+	}
+	return result
+}
+
+func loadResidents(filename string) (map[int]*Resident, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	residents := make(map[int]*Resident)
+	scanner := bufio.NewScanner(f)
+	buf := make([]byte, 0, 1024*1024)
+	scanner.Buffer(buf, 10*1024*1024)
+	firstLine := true
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if firstLine {
+			firstLine = false
+			continue
+		}
+		if line == "" {
+			continue
+		}
+		fields := splitCSVLine(line)
+		if len(fields) < 4 {
+			continue
+		}
+		id, err := strconv.Atoi(strings.TrimSpace(fields[0]))
+		if err != nil {
+			continue
+		}
+		residents[id] = &Resident{
+			residentID: id,
+			firstname:  strings.TrimSpace(fields[1]),
+			lastname:   strings.TrimSpace(fields[2]),
+			rol:        parseStringList(fields[3]),
+			nextIdx:    0,
+		}
+	}
+	return residents, scanner.Err()
+}
+
+func loadPrograms(filename string) (map[string]*Program, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	programs := make(map[string]*Program)
+	scanner := bufio.NewScanner(f)
+	buf := make([]byte, 0, 1024*1024)
+	scanner.Buffer(buf, 10*1024*1024)
+	firstLine := true
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if firstLine {
+			firstLine = false
+			continue
+		}
+		if line == "" {
+			continue
+		}
+		fields := splitCSVLine(line)
+		if len(fields) < 4 {
+			continue
+		}
+		id := strings.TrimSpace(fields[0])
+		name := strings.TrimSpace(fields[1])
+		quota, err := strconv.Atoi(strings.TrimSpace(fields[2]))
+		if err != nil {
+			continue
+		}
+		rolInts := parseIntList(fields[3])
+		cache := make(map[int]int, len(rolInts))
+		for i, rid := range rolInts {
+			cache[rid] = i
+		}
+		programs[id] = &Program{
+			programID:         id,
+			name:              name,
+			nPositions:        quota,
+			rol:               rolInts,
+			selectedResidents: []int{},
+			rankCache:         cache,
+		}
+	}
+	return programs, scanner.Err()
+}
+
+func printResults(residents map[int]*Resident, programs map[string]*Program) {
+	list := make([]*Resident, 0, len(residents))
+	for _, r := range residents {
+		list = append(list, r)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].lastname != list[j].lastname {
+			return list[i].lastname < list[j].lastname
+		}
+		return list[i].firstname < list[j].firstname
+	})
+	fmt.Println("lastname,firstname,residentID,programID,name")
+	unmatchedCount := 0
+	for _, r := range list {
+		if r.matchedProgram == "" {
+			fmt.Printf("%s,%s,%d,XXX,NOT_MATCHED\n", r.lastname, r.firstname, r.residentID)
+			unmatchedCount++
+		} else {
+			p := programs[r.matchedProgram]
+			fmt.Printf("%s,%s,%d,%s,%s\n", r.lastname, r.firstname, r.residentID, p.programID, p.name)
+		}
+	}
+	openPositions := 0
+	for _, p := range programs {
+		openPositions += p.nPositions - len(p.selectedResidents)
+	}
+	fmt.Printf("Number of unmatched residents: %d\n", unmatchedCount)
+	fmt.Printf("Number of positions available: %d\n", openPositions)
+}
+
+func main() {
+	if len(os.Args) != 3 {
+		fmt.Fprintln(os.Stderr, "Usage: go run main.go <residentsFile> <programsFile>")
+		os.Exit(1)
+	}
+	residents, err := loadResidents(os.Args[1])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error loading residents:", err)
+		os.Exit(1)
+	}
+	programs, err := loadPrograms(os.Args[2])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error loading programs:", err)
+		os.Exit(1)
+	}
+	start := time.Now()
+	var wg sync.WaitGroup
+	for id := range residents {
+		wg.Add(1)
+		go offer(id, residents, programs, &wg)
+	}
+	wg.Wait()
+	end := time.Now()
+	printResults(residents, programs)
+	fmt.Printf("\nExecution time: %s\n", end.Sub(start))
+}
+```
+
+---
+
+#### 2. Sequential version — `go/sequential/main.go`
+
+---
+
+##### 2.1 Package and imports (sequential)
+
+**Explanation:** The sequential version does not import `sync` (no Mutex or WaitGroup); it only uses `time` for timing. The rest is the same as the concurrent version for file I/O, string parsing, and output.
+
+```go
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+)
+```
+
+---
+
+##### 2.2 Data types: Resident and Program (sequential)
+
+**Explanation:** Same logical fields as the concurrent version but **no `mu sync.Mutex`**. With a single thread, only one `offer`/`evaluate` runs at a time, so there is no concurrent write and no locks are needed.
+
+```go
+type Resident struct {
+	residentID     int
+	firstname      string
+	lastname       string
+	rol            []string
+	matchedProgram string
+	nextIdx        int
+}
+
+type Program struct {
+	programID         string
+	name              string
+	nPositions        int
+	rol               []int
+	selectedResidents []int
+	rankCache         map[int]int
+}
+```
+
+---
+
+##### 2.3 Program helper methods (sequential)
+
+**Explanation:** Same as concurrent: `member` and `rank` only read `rankCache`; `leastPreferred` finds the worst-ranked among selected residents; `removeResident` uses swap-with-last for O(1) removal. No locking is needed in the sequential version.
+
+```go
+func (p *Program) member(residentID int) bool {
+	_, ok := p.rankCache[residentID]
+	return ok
+}
+
+func (p *Program) rank(residentID int) int {
+	if r, ok := p.rankCache[residentID]; ok {
+		return r
+	}
+	return -1
+}
+
+func (p *Program) leastPreferred() int {
+	if len(p.selectedResidents) == 0 {
+		return -1
+	}
+	worst := p.selectedResidents[0]
+	worstRank := p.rank(worst)
+	for _, rid := range p.selectedResidents {
+		if p.rank(rid) > worstRank {
+			worstRank = p.rank(rid)
+			worst = rid
+		}
+	}
+	return worst
+}
+
+func (p *Program) removeResident(rid int) {
+	for i, id := range p.selectedResidents {
+		if id == rid {
+			last := len(p.selectedResidents) - 1
+			p.selectedResidents[i] = p.selectedResidents[last]
+			p.selectedResidents = p.selectedResidents[:last]
+			return
+		}
+	}
+}
+```
+
+---
+
+##### 2.4 McVitie–Wilson: offer (sequential)
+
+**Explanation:** Same logic as the concurrent version but **no WaitGroup** and **direct call** to `evaluate` (no goroutine). If the ROL is exhausted, set `matchedProgram = ""` and return; otherwise take the current program, increment `nextIdx`, then call `evaluate(rid, pid, residents, programs)` (no `wg` argument).
+
+```go
+func offer(rid int, residents map[int]*Resident, programs map[string]*Program) {
+	r := residents[rid]
+
+	if r.nextIdx >= len(r.rol) {
+		r.matchedProgram = ""
+		return
+	}
+
+	pid := r.rol[r.nextIdx]
+	r.nextIdx++
+
+	evaluate(rid, pid, residents, programs)
+}
+```
+
+---
+
+##### 2.5 McVitie–Wilson: evaluate (sequential)
+
+**Explanation:** The three cases are the same as in the concurrent version, but every “try next” is a **direct call** to `offer(...)` instead of `go offer(...)`. Case 1: `offer(rid, ...)`; Case 3a: update state then `offer(lp, ...)`; Case 3b: `offer(rid, ...)`. No locks and no `wg.Add(1)`.
+
+```go
+func evaluate(rid int, pid string, residents map[int]*Resident, programs map[string]*Program) {
+	r := residents[rid]
+	p := programs[pid]
+
+	if !p.member(rid) {
+		offer(rid, residents, programs)
+		return
+	}
+
+	if len(p.selectedResidents) < p.nPositions {
+		p.selectedResidents = append(p.selectedResidents, rid)
+		r.matchedProgram = pid
+		return
+	}
+
+	lp := p.leastPreferred()
+
+	if p.rank(rid) < p.rank(lp) {
+		p.removeResident(lp)
+		p.selectedResidents = append(p.selectedResidents, rid)
+		r.matchedProgram = pid
+		residents[lp].matchedProgram = ""
+		offer(lp, residents, programs)
+	} else {
+		offer(rid, residents, programs)
+	}
+}
+```
+
+---
+
+##### 2.6 CSV parsing, loading, output, and main (sequential)
+
+**Explanation:** `splitCSVLine`, `parseStringList`, `parseIntList`, `loadResidents`, `loadPrograms`, and `printResults` are the same as in the concurrent version (types simply have no `mu`). **main** differs: no `wg`; it calls `offer` sequentially with `for id := range residents { offer(id, residents, programs) }`, then stops the timer and prints results and execution time.
+
+```go
+func splitCSVLine(line string) []string {
+	var fields []string
+	var current strings.Builder
+	inQuotes := false
+	for _, c := range line {
+		switch {
+		case c == '"':
+			inQuotes = !inQuotes
+		case c == ',' && !inQuotes:
+			fields = append(fields, current.String())
+			current.Reset()
+		default:
+			current.WriteRune(c)
+		}
+	}
+	fields = append(fields, current.String())
+	return fields
+}
+
+func parseStringList(s string) []string {
+	s = strings.Trim(s, "[] \t")
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+func parseIntList(s string) []int {
+	s = strings.Trim(s, "[] \t")
+	if s == "" {
+		return []int{}
+	}
+	parts := strings.Split(s, ",")
+	result := make([]int, 0, len(parts))
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t == "" {
+			continue
+		}
+		n, err := strconv.Atoi(t)
+		if err == nil {
+			result = append(result, n)
+		}
+	}
+	return result
+}
+
+func loadResidents(filename string) (map[int]*Resident, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	residents := make(map[int]*Resident)
+	scanner := bufio.NewScanner(f)
+	buf := make([]byte, 0, 1024*1024)
+	scanner.Buffer(buf, 10*1024*1024)
+	firstLine := true
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if firstLine {
+			firstLine = false
+			continue
+		}
+		if line == "" {
+			continue
+		}
+		fields := splitCSVLine(line)
+		if len(fields) < 4 {
+			continue
+		}
+		id, err := strconv.Atoi(strings.TrimSpace(fields[0]))
+		if err != nil {
+			continue
+		}
+		residents[id] = &Resident{
+			residentID: id,
+			firstname:  strings.TrimSpace(fields[1]),
+			lastname:   strings.TrimSpace(fields[2]),
+			rol:        parseStringList(fields[3]),
+			nextIdx:    0,
+		}
+	}
+	return residents, scanner.Err()
+}
+
+func loadPrograms(filename string) (map[string]*Program, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	programs := make(map[string]*Program)
+	scanner := bufio.NewScanner(f)
+	buf := make([]byte, 0, 1024*1024)
+	scanner.Buffer(buf, 10*1024*1024)
+	firstLine := true
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if firstLine {
+			firstLine = false
+			continue
+		}
+		if line == "" {
+			continue
+		}
+		fields := splitCSVLine(line)
+		if len(fields) < 4 {
+			continue
+		}
+		id := strings.TrimSpace(fields[0])
+		name := strings.TrimSpace(fields[1])
+		quota, err := strconv.Atoi(strings.TrimSpace(fields[2]))
+		if err != nil {
+			continue
+		}
+		rolInts := parseIntList(fields[3])
+		cache := make(map[int]int, len(rolInts))
+		for i, rid := range rolInts {
+			cache[rid] = i
+		}
+		programs[id] = &Program{
+			programID:         id,
+			name:              name,
+			nPositions:        quota,
+			rol:               rolInts,
+			selectedResidents: []int{},
+			rankCache:         cache,
+		}
+	}
+	return programs, scanner.Err()
+}
+
+func printResults(residents map[int]*Resident, programs map[string]*Program) {
+	list := make([]*Resident, 0, len(residents))
+	for _, r := range residents {
+		list = append(list, r)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].lastname != list[j].lastname {
+			return list[i].lastname < list[j].lastname
+		}
+		return list[i].firstname < list[j].firstname
+	})
+	fmt.Println("lastname,firstname,residentID,programID,name")
+	unmatchedCount := 0
+	for _, r := range list {
+		if r.matchedProgram == "" {
+			fmt.Printf("%s,%s,%d,XXX,NOT_MATCHED\n", r.lastname, r.firstname, r.residentID)
+			unmatchedCount++
+		} else {
+			p := programs[r.matchedProgram]
+			fmt.Printf("%s,%s,%d,%s,%s\n", r.lastname, r.firstname, r.residentID, p.programID, p.name)
+		}
+	}
+	openPositions := 0
+	for _, p := range programs {
+		openPositions += p.nPositions - len(p.selectedResidents)
+	}
+	fmt.Printf("Number of unmatched residents: %d\n", unmatchedCount)
+	fmt.Printf("Number of positions available: %d\n", openPositions)
+}
+
+func main() {
+	if len(os.Args) != 3 {
+		fmt.Fprintln(os.Stderr, "Usage: go run main.go <residentsFile> <programsFile>")
+		os.Exit(1)
+	}
+	residents, err := loadResidents(os.Args[1])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error loading residents:", err)
+		os.Exit(1)
+	}
+	programs, err := loadPrograms(os.Args[2])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error loading programs:", err)
+		os.Exit(1)
+	}
+	start := time.Now()
+	for id := range residents {
+		offer(id, residents, programs)
+	}
+	end := time.Now()
+	printResults(residents, programs)
+	fmt.Printf("\nExecution time: %s\n", end.Sub(start))
+}
+```
+
+---
+
+==Summary==
+
+| Aspect        | Concurrent                              | Sequential                 |
+|---------------|-----------------------------------------|----------------------------|
+| offer calls   | Every call is `go offer(...)` with `wg` | Direct `offer(...)`       |
+| Shared data   | Resident / Program protected by Mutex   | No locks; single-threaded  |
+| Imports       | Includes `sync`, `time`                 | Includes `time`, no `sync` |
+| Algorithm     | Same McVitie–Wilson offer/evaluate      | Same                       |
+| CSV / output  | Same as sequential                      | Same as concurrent         |
+
+The two versions differ only in concurrency and locking; the algorithm and I/O/output format are the same. On large inputs the concurrent version is expected to be faster.
 
 ### Part 3
 
