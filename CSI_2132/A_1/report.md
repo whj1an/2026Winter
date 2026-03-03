@@ -207,7 +207,7 @@ Result: prices of all products that are shoes in the store named 'LaFollie'.
 Relational algebra:  
 \[
 \pi_{\text{price}}\bigl(
-  \sigma_{\text{sname} = 'LaFollie' \land \text{itsshoes} = 'yes'}
+  \sigma_{\text{sname} = 'LaFollie' \land \text{itsshoes} = 'yes'}\\
   (\text{Store}
     \bowtie_{\text{Store.store-id} = \text{Has\_stock.store-id}} \text{Has\_stock}
     \bowtie_{\text{Has\_stock.barcode} = \text{Product.barcode}} \text{Product})
@@ -290,7 +290,7 @@ Tuple relational calculus:
 \{\, b \mid
   \exists h_1\ (\text{Has\_stock}(h_1)
           \land h_1.\text{store-id} = '1'
-          \land b = h_1.\text{barcode}
+          \land b = h_1.\text{barcode}\\
           \land \neg\exists h_2\ (\text{Has\_stock}(h_2)
                            \land h_2.\text{store-id} = '2'
                            \land h_2.\text{barcode} = h_1.\text{barcode}))
@@ -308,7 +308,7 @@ Tuple relational calculus:
     \text{Product}(p) \land b = p.\text{barcode}
     \land
     \forall s\bigl(
-      \text{Store}(s) \land s.\text{city} = 'Ottawa'
+      \text{Store}(s) \land s.\text{city} = 'Ottawa'\\
       \rightarrow
       \exists h\bigl(
         \text{Has\_stock}(h)

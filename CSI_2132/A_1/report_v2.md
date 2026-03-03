@@ -1,9 +1,4 @@
-Assignment 1 – CSI 2132 
-
-Student Name:
-
-Student Number:
-
+Assignment 1 – CSI 2132  
 Relational Algebra and Relational Calculus  
 
 ## Exercise 1
