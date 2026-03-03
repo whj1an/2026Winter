@@ -1,21 +1,23 @@
 Assignment 1 – CSI 2132 
 
-Student Name: Haojian Wang
+Student Name:
 
-Student Number: 300411829
+Student Number:
+
+Relational Algebra and Relational Calculus  
 
 ## Exercise 1
 
-Given:  
+Schema used in this exercise:  
 - Store(storeid, sname, employee_number, city)  
 - Product(pid, pname, price)  
 - Supply(storeid, pid)  
 
 ### A
 
-Result: storeid of stores with fewer than 100 employees or in city 'Ottawa'.  
+We want the ids of the stores that either have fewer than 100 employees or are located in the city 'Ottawa'.  
 
-Relational algebra:  
+Relational algebra expression:  
 \[
 \pi_{\text{storeid}}\bigl(
   \sigma_{\text{employee\_number} < 100 \;\lor\; \text{city} = 'Ottawa'}(\text{Store})
@@ -24,9 +26,9 @@ Relational algebra:
 
 ### B
 
-Result: sname of stores that supply the product with pname 'pencil'.  
+Here we look for the names of stores that offer the product whose name is 'pencil'.  
 
-Relational algebra:  
+Relational algebra expression:  
 \[
 \pi_{\text{sname}}\bigl(
   \text{Store} \bowtie_{\text{Store.storeid} = \text{Supply.storeid}}
@@ -38,7 +40,7 @@ Relational algebra:
 
 ### C
 
-Result: sname and city of stores that supply all products supplied by the store with storeid '0808'.  
+In this part we need the names and cities of all stores that carry every product that is also supplied by the store with id '0808'.  
 
 Let  
 \[
@@ -48,7 +50,12 @@ R(\text{storeid}, \text{pid}) = \text{Supply}
 P(\text{pid}) = \pi_{\text{pid}}(\sigma_{\text{storeid} = '0808'}(\text{Supply}))
 \]
 
-Expanded:  
+We use division to describe the condition:  
+\[
+T(\text{storeid}) = R \div P
+\]
+
+An equivalent expanded form is:  
 \[
 T = \pi_{\text{storeid}}(R)
   - \pi_{\text{storeid}}\bigl(
@@ -56,7 +63,7 @@ T = \pi_{\text{storeid}}(R)
     \bigr)
 \]
 
-Final result:  
+The final projection on store name and city is:  
 \[
 \pi_{\text{sname}, \text{city}}\bigl(
   \text{Store} \bowtie_{\text{Store.storeid} = T.\text{storeid}} T
@@ -65,16 +72,16 @@ Final result:
 
 ## Exercise 2
 
-Given:  
+Schema for this exercise:  
 - Employee(eid, cid, salary, managerid)  
 - Company(cid, companyname, location)  
 - Shares(eid, cid, sharenum)  
 
 ### A
 
-Result: eid of employees who work for company 'Google' and have more than 500 shares in company 'Facebook'.  
+We select the eids of employees who work for the company called 'Google' and at the same time hold more than 500 shares in the company called 'Facebook'.  
 
-Relational algebra (short form with renaming):  
+Relational algebra (with renamed copies of Company):  
 \[
 \pi_{E.\text{eid}}\Bigl(
   \sigma_{\substack{
@@ -92,7 +99,7 @@ Relational algebra (short form with renaming):
 
 ### B
 
-Result: eid of employees whose manager owns shares in the company where the employee works.  
+Here we need the eids of those employees whose manager owns shares in the same company where the employee is employed.  
 
 Let  
 \[
@@ -101,7 +108,7 @@ E_2 = \rho_{E_2}(\text{Employee}),\quad
 S = \text{Shares}
 \]
 
-Relational algebra:  
+Relational algebra expression:  
 \[
 \pi_{E_1.\text{eid}}\bigl(
   \sigma_{E_1.\text{managerid} = E_2.\text{eid}
@@ -113,16 +120,16 @@ Relational algebra:
 
 ### C
 
-Result: eid of employees who own shares in at least 3 different companies (no aggregation).  
+In this question we are interested in employee ids for which the employee holds shares in at least three different companies, and we must do this without aggregation.  
 
-Let  
+Let three renamed copies of Shares be  
 \[
 S_1 = \rho_{S_1}(\text{Shares}),\quad
 S_2 = \rho_{S_2}(\text{Shares}),\quad
 S_3 = \rho_{S_3}(\text{Shares})
 \]
 
-Relational algebra:  
+Relational algebra expression:  
 \[
 \pi_{S_1.\text{eid}}\bigl(
   \sigma_{S_1.\text{eid} = S_2.\text{eid}
@@ -136,20 +143,20 @@ Relational algebra:
 
 ### D
 
-Result: eid of employees who have shares in all companies in the database (no aggregation).  
+Now we want the eids of those employees who have shares in every company that appears in the database, again without using aggregation.  
 
-Let  
+Define  
 \[
 R(\text{eid}, \text{cid}) = \pi_{\text{eid}, \text{cid}}(\text{Shares}),\quad
 C(\text{cid}) = \pi_{\text{cid}}(\text{Company})
 \]
 
-Relational algebra using division:  
+Using the division operator we can express the result as:  
 \[
 \pi_{\text{eid}}(R \div C)
 \]
 
-Expanded:  
+An equivalent form that expands the division is:  
 \[
 T = \pi_{\text{eid}}(R)
   - \pi_{\text{eid}}\bigl(
@@ -162,7 +169,7 @@ T = \pi_{\text{eid}}(R)
 
 ## Exercise 3
 
-Given:  
+Schemas here are:  
 - Supplier(supplier-id, name, city)  
 - Store(store-id, sname, city)  
 - Product(barcode, pname, price, itsshoes, itsabag, color, supplier-id)  
@@ -170,7 +177,7 @@ Given:
 
 ### A
 
-Result: sname of stores that have at least two different black bag designs in stock (no aggregation).  
+We look for the names of stores that have at least two distinct black bag products in stock, and we solve it without using aggregation.  
 
 Let  
 \[
@@ -182,7 +189,7 @@ H_1 = \rho_{H_1}(\text{Has\_stock}),\quad
 H_2 = \rho_{H_2}(\text{Has\_stock})
 \]
 
-Relational algebra:  
+Relational algebra expression:  
 \[
 \pi_{\text{sname}}\Bigl(
   \sigma_{\substack{
@@ -202,9 +209,9 @@ Relational algebra:
 
 ### B
 
-Result: prices of all products that are shoes in the store named 'LaFollie'.  
+Here we need the prices of all products that are shoes in the store whose name is 'LaFollie'.  
 
-Relational algebra:  
+Relational algebra expression:  
 \[
 \pi_{\text{price}}\bigl(
   \sigma_{\text{sname} = 'LaFollie' \land \text{itsshoes} = 'yes'}
@@ -216,7 +223,7 @@ Relational algebra:
 
 ### C
 
-Result: name of suppliers that supply more than 5 products with different barcodes (aggregation allowed).  
+This question asks for the supplier names where each such supplier provides more than five products with different barcodes, and here we are allowed to use aggregation.  
 
 Let  
 \[
@@ -226,7 +233,7 @@ R = \text{Supplier} \bowtie_{\text{Supplier.supplier-id} = \text{Product.supplie
 G = \gamma_{\text{supplier-id}, \text{name}, \text{city};\ \text{COUNT}(\text{barcode}) \rightarrow \text{prodcount}}(R)
 \]
 
-Relational algebra:  
+Relational algebra expression for the final result:  
 \[
 \pi_{\text{name}}\bigl(
   \sigma_{\text{prodcount} > 5}(G)
@@ -235,7 +242,7 @@ Relational algebra:
 
 ### D
 
-Result: barcode of products that are sold both by store-id '1' and store-id '2' (no intersection operator).  
+Finally in this exercise we are looking for barcodes of products that appear in both store 1 and store 2, and we must not use the intersection operator directly.  
 
 Let  
 \[
@@ -243,7 +250,7 @@ H_1 = \rho_{H_1}(\text{Has\_stock}),\quad
 H_2 = \rho_{H_2}(\text{Has\_stock})
 \]
 
-Relational algebra:  
+Relational algebra expression:  
 \[
 \pi_{H_1.\text{barcode}}\bigl(
   \sigma_{H_1.\text{store-id} = '1'
@@ -255,17 +262,17 @@ Relational algebra:
 
 ## Exercise 4
 
-Given:  
+The schema here is the same as in Exercise 3:  
 - Supplier(supplier-id, name, city)  
 - Store(store-id, sname, city)  
 - Product(barcode, pname, price, itsshoes, itsabag, color, supplier-id)  
 - Has_stock(store-id, barcode, quantity)  
 
-We use tuple relational calculus. Product(p) means tuple p is in relation Product, and similar for Store(s), Has_stock(h).  
+We write the answers in tuple relational calculus. When we say Product(p) we mean that tuple p belongs to the relation Product, and similarly for Store(s) and Has_stock(h).  
 
 ### A
 
-Result: all product tuples with price greater than 40.  
+We describe the set of all product tuples whose price is greater than 40.  
 
 Tuple relational calculus:  
 \[
@@ -274,7 +281,7 @@ Tuple relational calculus:
 
 ### B
 
-Result: barcode of all products with price greater than 40.  
+Now we only keep the barcodes of the products from the previous condition (price greater than 40).  
 
 Tuple relational calculus:  
 \[
@@ -283,7 +290,7 @@ Tuple relational calculus:
 
 ### C
 
-Result: barcode of products sold in store-id '1' but not in store-id '2'.  
+Here we want the barcodes of products that are sold in store 1 but not in store 2.  
 
 Tuple relational calculus:  
 \[
@@ -299,7 +306,7 @@ Tuple relational calculus:
 
 ### D
 
-Result: barcode of products that are sold in all stores in city 'Ottawa'.  
+Last, we specify the barcodes of products that are sold in every store whose city is 'Ottawa'.  
 
 Tuple relational calculus:  
 \[
@@ -319,10 +326,4 @@ Tuple relational calculus:
   \bigr)
 \,\}
 \]
-
-## References
-
-- Course notes and slides of CSI 2132 – Databases I, University of Ottawa.  
-- Standard database textbook on relational algebra and calculus (for example, "Database System Concepts").  
-- RelaX – Relational Algebra Calculator website for testing relational algebra expressions.  
 
