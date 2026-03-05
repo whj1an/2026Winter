@@ -322,7 +322,6 @@ Tuple relational calculus:
 
 ## References
 
-- Course notes and slides of CSI 2132 – Databases I, University of Ottawa.  
-- Standard database textbook on relational algebra and calculus (for example, "Database System Concepts").  
-- RelaX – Relational Algebra Calculator website for testing relational algebra expressions.  
+- Standard database textbook (some)
+- RelaX
 
