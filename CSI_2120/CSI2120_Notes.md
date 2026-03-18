@@ -603,7 +603,7 @@ The function performs at most nTrials attempts. Each attempt generates a random 
 
 Submit one of three labs.
 
-### Lab1
+### Go - Lab 1
 
 #### Question 1
 
@@ -715,17 +715,55 @@ type PointSearcher interface{
 
 ---
 
-### Lab 2
-
-Prolog
+### Prolog - Lab 1
 
 #### Q 1
 
 *Given the following facts*
 
+```pl
+flight(montreal, chicoutimi, 15:30, 16:15).
+flight(montreal, sherbrooke, 17:10, 17:50).
+flight(montreal, sudbury, 16:40, 18:45).
+flight(northbay, kenora, 13:10, 14:40).
+flight(ottawa, montreal, 12:20, 13:10).
+flight(ottawa, northbay, 11:25, 12:20).
+flight(ottawa, thunderbay, 19:00, 20:30).
+flight(ottawa, toronto, 10:30, 11:30).
+flight(sherbrooke, baiecomeau, 18:40, 20:05).
+flight(sudbury, kenora, 20:15, 21:55).
+flight(thunderbay, kenora, 20:00, 21:55).
+flight(toronto, london, 13:15, 14:05).
+flight(toronto, montreal, 12:45, 14:40).
+flight(windsor, toronto, 8:50, 10:10).
+```
+
+Deifn the predicate that determines if whether, upon arriving at a certain time, it is possible to catch a given flight, knowing that one must arrive at lest `Req` minutes in advance?
+
+```pl
+on_time(Time, Departure, Arrival, Req)
+```
+
+**q1.pl**
+
+```pl
+time_to_minutes(H:M, Total) :-
+	Total is H * 60 + M.
+	
+on_time(Time, Departure, Arrival, Req) :-
+	flight(Departure, Arrival, FlightTie, _),
+	time_to_minutes(Time, T),
+	time_to_minutes(FlightTie, F),
+	T + Req <= F.
+```
 
 
 
+
+
+
+
+---
 
 ## Project
 
