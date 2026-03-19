@@ -597,6 +597,102 @@ func main() {
 
 The function performs at most nTrials attempts. Each attempt generates a random integer in `[0, maxValue)` and keeps it only if it is prime. It then checks whether the last k decimal digits of the prime match the given pattern by using `n % 10^k == pattern`. If found, it returns `(n, true)`; otherwise, after nTrials it returns `(0, false)`.
 
+
+
+### Assignment 2
+
+#### Question 1
+
+Consider the following Prolog program:
+
+```pl
+divisible (X,N) :- 0 is X mod N. % 判断X能否被N整除
+distribute([], [], []). % base case: 空列表结果
+distribute([H|T], [H|L1], L2) :-  % 规则1: H被2整除 -> H放入A
+	divisible(H, 2),
+	distribute(T, L1, L2).
+distribute([H|T], [H|L1], L2) :- % 规则2: H被3整除 -> H放入A
+	divisible(H, 3),
+	distribute(T, L1, L2).
+distribute([H|T], L1, [H|L2]) :- % 规则3:都不满足（无条件）-> H放入B
+	distribute(T, L1, L2)
+```
+
+Draw the complete Prolog search tree for the following query. Show all solutions found.
+
+**关键 Key**: Prolog会按顺序尝试规则1，2，3；失败就会回溯
+
+> `[H|T]`是prolog中的一种**匹配模式**工具，用来讲一个非空列表拆封成两个部分
+>
+> `|`是分隔符，他将列表分割成两块：
+>
+> - `H`：表示头部，他可以是任何东西：数字，字母，另一个列表
+> - `T`: 尾部，表示这个列表去除第一个元素之外的所有剩余元素，有的时候`T`也会是一个空列表`[]`
+>
+> 就比如上面的例子：匹配`[9, 6, 7]`和`[H|T]`
+>
+> - 匹配一次结果就是：`H = 9, T = [6, 7]`
+> - 匹配`[6, 7]`: `H = 6, T = [7]`
+> - 匹配`[7]`: `H = 7, T = []`
+> - 匹配`[]`: Fail。因为空列表无法提取元素了，所以必须会有一个单独的`distribute([], [], []).`来作为Base Case
+
+```pl
+?- distribute([9, 6, 7], A, B).
+```
+
+![image-20260317205601722](./assets/CSI2120_Notes/image-20260317205601722.png)
+
+#### Question 2
+
+Consider the following Prolog database: `database.pl`
+
+```pl
+room(room101).
+room(room202).
+room(auditorium).
+day(monday).
+day(tuesday).
+day(wednesday).
+day(thursday).
+day(friday).
+work_hours(8,18). % events cannot start before, or end after
+% event(event_name, day, start_hour, end_hour, room_name)
+event(meeting1, monday, 9, 11, room101).
+event(meeting2, monday, 14, 17, room101).
+event(workshop, monday, 8, 17, room202).
+event(cleanup, monday, 8, 18, auditorium).
+event(conference, tuesday, 14, 16, room101).
+event(board, tuesday, 9, 12, room202).
+event(activity, tuesday, 10, 17, auditorium).
+```
+
+*All the solutions are written in the file name `rooms.pl`*
+
+a) Write the predicate `busy_room(Day, Start, End, Room)` that determines if a room is occupied fro the period specified.
+
+```pl
+?- busy_room(monday, 13, 15, room101).
+true .
+?- busy_room(tuesday, 8, 11, R).
+R = room202 ;
+R = auditorium.
+?- busy_room(D, 13, 15, room101).
+D = monday ;
+D = tuesday ;
+false.
+```
+
+Solutions:
+
+```pl
+busy_room(Day, Start, End, Room) :-
+	event(_, Day, ES, EE, Room),
+	ES < End,
+	EE > Start.
+```
+
+
+
 ---
 
 ## Labs
