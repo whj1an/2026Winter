@@ -682,7 +682,7 @@ D = tuesday ;
 false.
 ```
 
-Solutions:
+==Solutions==:
 
 ```pl
 busy_room(Day, Start, End, Room) :-
@@ -691,7 +691,18 @@ busy_room(Day, Start, End, Room) :-
 	EE > Start.
 ```
 
+记住：prolog的规则给是永远是
 
+```pl
+头部:- 条建议， 条件二， 条件三.
+```
+
+只有所有条件都成立，头部才会成立
+
+The **Head** is `busy_room(Day, Start, End, Room)`
+
+- 这是predicate的名字
+- 
 
 ---
 

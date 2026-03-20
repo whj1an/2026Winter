@@ -16,7 +16,7 @@ event(conference, tuesday, 14, 16, room101).
 event(board, tuesday, 9, 12, room202).
 event(activity, tuesday, 10, 17, auditorium).
 
-% q1 bsuy_room
+% q1 busy_room
 busy_room(Day, Start, End, Room) :-
     event(_, Day, ES, EE, Room),
     ES < End,
