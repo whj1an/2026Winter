@@ -1170,4 +1170,3 @@ The slides describe:
 - Vocabulary like **lemma（引理）**, **axiom（公理）**, **contrapositive（逆否命题）**, **invariant（不变量）**, **state machine（状态机）**, **mutual exclusion（互斥）**, **deadlock（死锁）** is central;在阅读英文教材时，可以对照这里的中英文注释理解。  
 - 练习方向：多写完整的归纳证明、多用不变量思考简单“小游戏”和算法、尝试把自然语言题目正式翻译成“对所有/存在”形式的逻辑命题并证明。
 
-
