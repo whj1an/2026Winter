@@ -1,8 +1,7 @@
 ---
-title: "CSI2120 Notes"
-author: "Jace Wang"
-date: "2026-01-12"
-
+title: CSI2120 Notes
+author: Jace Wang
+date: 2026-01-12
 output:
   pdf_document:
     toc: true
@@ -845,7 +844,7 @@ flight(toronto, montreal, 12:45, 14:40).
 flight(windsor, toronto, 8:50, 10:10).
 ```
 
-Deifn the predicate that determines if whether, upon arriving at a certain time, it is possible to catch a given flight, knowing that one must arrive at lest `Req` minutes in advance?
+Definition the predicate that determines if whether, upon arriving at a certain time, it is possible to catch a given flight, knowing that one must arrive at lest `Req` minutes in advance?
 
 ```pl
 on_time(Time, Departure, Arrival, Req)
@@ -854,18 +853,57 @@ on_time(Time, Departure, Arrival, Req)
 **q1.pl**
 
 ```pl
+% 参数:
+$ H:M - 输入时间
+% Total - 输出总分钟数
 time_to_minutes(H:M, Total) :-
 	Total is H * 60 + M.
 	
-on_time(Time, Departure, Arrival, Req) :-
+% 作用：判断在 Time 时间到达机场，是否能赶上从 Departure 飞往 Arrival 的航班
+% 条件：到达时间 + 所需准备时间 Req ≤ 航班起飞时间
+% 参数：
+%   Time      - 你到达机场的时间
+%   Departure - 出发城市
+%   Arrival   - 目的地城市
+%   Req       - 需要提前到达的分钟数
+on_time(Time, Departure, Arrival, Req) :- 
+	
+	
 	flight(Departure, Arrival, FlightTie, _),
 	time_to_minutes(Time, T),
 	time_to_minutes(FlightTie, F),
 	T + Req <= F.
 ```
 
+先用`time_to_minutes` function 将数据库中的数据转换成分钟和的形式，方便后续用于比较
 
 
+
+### Scheme - Lab 1
+
+#### Question 1
+
+Write a Scheme function that takes a list of numbers and returns a new list 
+containing either -1 or 1, depending on whether each number in the original list is 
+negative or positive. 
+
+```scheme
+> (sign-list '(3 -2 7 -9 4)) 
+(1 -1 1 -1 1)
+```
+
+这是一个典型的Scheme递归+list处理的问题 His goal is:
+> a list of number input -> output a new list, which is all positive number will be 1, negative will be -1
+
+Example input:
+```scheme
+(sign-list '(3 -2 7 -9 4))
+```
+
+Return:
+```scheme
+(1 -1 1 -1 1)
+```
 
 
 
