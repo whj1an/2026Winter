@@ -7,7 +7,7 @@ The project is organised to satisfy the requirements of the **2nd deliverable** 
 
 ---
 
-## 0. Repository Layout (Where to Start)
+## 0. Repository Layout
 
 - `part2/ehotels/` – **Main deliverable (database + web application)**  
   Contains the full SQL implementation (`schema.sql`, `populate.sql`, `queries.sql`, `triggers.sql`, `indexes.sql`, `views.sql`) and the Next.js application (`pages/`, `pages/api/`, etc.).
